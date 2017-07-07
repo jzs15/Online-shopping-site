@@ -330,8 +330,9 @@ def post_delete(request, post_id):
     useritems = UserItem.objects.filter(item_id = post_id)
     for useritem in useritems:
         if useritem.is_purchased == False:
-            request.user.total_price -= useritem.total_price
-            request.user.save()
+            user = MyUser.objects.get(id=useritem.user_id_id)
+            user.total_price -= useritem.total_price
+            user.save()
             useritem.delete()
     return redirect('index')
 
@@ -348,10 +349,10 @@ def purchase_success(request):
     return render(request, 'purchase_success.html')
 
 def send_clicked(request, useritem_id):
-    print("SEND_CLICKED")
     useritem = get_object_or_404(UserItem, pk=useritem_id)
-    useritem.is_sended = True
-    useritem.save()
+    if useritem.is_sended == False:
+        useritem.is_sended = True
+        useritem.save()
 
     myuser = request.user
     if myuser.is_seller == True:
@@ -364,15 +365,15 @@ def send_clicked(request, useritem_id):
 
 
 def receive_clicked(request, useritem_id):
-    print("RECEIVE_CLICKED")
     useritem = get_object_or_404(UserItem, pk=useritem_id)
-    useritem.is_received = True
-    useritem.save()
+    if useritem.is_received == False:
+        useritem.is_received = True
+        useritem.save()
+        seller = get_object_or_404(MyUser, id=useritem.product_author)
+        seller.money += useritem.total_price
+        seller.save()
 
     myuser = request.user
-    seller = get_object_or_404(MyUser, id=useritem.product_author)
-    seller.money += useritem.total_price
-    seller.save()
 
     if myuser.is_seller == True:
         useritems = UserItem.objects.filter(product_author=request.user.id)
