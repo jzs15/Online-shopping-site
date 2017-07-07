@@ -202,7 +202,7 @@ def purchase(request, post_id):
         useritem.item_title = post.title
         useritem.price = post.price
         useritem.is_purchased = True
-        useritem.product_author = post.author
+        useritem.product_author = post.author_id
         useritem.image = post.image
         useritem.total_price = useritem.quantity * useritem.price
         user = get_object_or_404(MyUser, pk=useritem.user_id_id)
@@ -216,22 +216,38 @@ def purchase(request, post_id):
 
 def shoppingcart(request, post_id):
     post = get_object_or_404(Post, pk=post_id)
+    useritems = UserItem.objects.filter(user_id = request.user.id, item_id = post_id, is_purchased = 0)
+    is_exist = False
+    for m_useritem in useritems:
+        is_exist = True
     if request.method == 'POST':
         form = UserItemForm(request.POST)
     else:
         form = UserItemForm(None)
     if form.is_valid():
         useritem = form.save(commit=False)
-        useritem.user_id = request.user
-        useritem.item_id = post_id
-        useritem.item_title = post.title
-        useritem.price = post.price
-        useritem.total_price = useritem.quantity * useritem.price
-        useritem.is_in_cart = True
-        user = get_object_or_404(MyUser, pk=useritem.user_id_id)
-        user.total_price += post.price * useritem.quantity
-        useritem.save()
-        user.save()
+        if is_exist == True:
+            for m_useritem in useritems:
+                m_useritem.quantity += useritem.quantity
+                m_useritem.total_price = m_useritem.quantity * m_useritem.price
+                user = get_object_or_404(MyUser, pk=request.user.id)
+                user.total_price += post.price * useritem.quantity
+                m_useritem.save()
+                user.save()
+                UserItem.objects.filter(id=useritem.id).delete()
+        else:
+            useritem.user_id = request.user
+            useritem.item_id = post_id
+            useritem.item_title = post.title
+            useritem.price = post.price
+            useritem.total_price = useritem.quantity * useritem.price
+            useritem.is_in_cart = True
+            useritem.product_author = post.author_id
+            user = get_object_or_404(MyUser, pk = request.user.id)
+            user.total_price += post.price * useritem.quantity
+            useritem.save()
+            user.save()
+        print(is_exist)
         return redirect('mycart')
     return render(request, 'shopping_cart.html', {'post': post, 'form': form})
 
@@ -275,6 +291,20 @@ def post_change(request, post_id):
         post.price = Decimal(request.POST.get('price'))
         post.type = request.POST.get('type')
         post.save()
+        useritems = UserItem.objects.filter(product_author=request.user.id)
+        for useritem in useritems:
+            if useritem.is_in_cart == True:
+                useritem.price = post.price
+                useritem.total_price = post.price * useritem.quantity
+                useritem.save()
+                user = MyUser.objects.get(id=useritem.user_id_id)
+                total_price = Decimal(0.0)
+                list = UserItem.objects.filter(user_id_id=user.id)
+                for id in list:
+                    if id.is_in_cart == True:
+                        total_price += useritem.total_price
+                user.total_price = total_price
+                user.save()
         return redirect('post', post_id)
     else:
         form = PostForm(None)
@@ -284,6 +314,10 @@ def post_change(request, post_id):
         if not post.type:
             post.type = ''
         post.image = form.cleaned_data['image']
+        post.quantity = int(request.POST.get('quantity'))
+        post.content = request.POST.get('content')
+        post.price = Decimal(request.POST.get('price'))
+        post.type = request.POST.get('type')
         post.save()
         form = PostForm()
         return redirect('post', post_id)
@@ -296,13 +330,15 @@ def post_delete(request, post_id):
     useritems = UserItem.objects.filter(item_id = post_id)
     for useritem in useritems:
         if useritem.is_purchased == False:
-            UserItem.objects.filter(id=useritem.id).delete()
+            request.user.total_price -= useritem.total_price
+            request.user.save()
+            useritem.delete()
     return redirect('index')
 
 def my_order(request, user_id):
     myuser = request.user
     if myuser.is_seller == True:
-        useritems = UserItem.objects.filter(product_author=request.user)
+        useritems = UserItem.objects.filter(product_author=request.user.id)
     else:
         useritems = UserItem.objects.filter(user_id=request.user)
     useritems = useritems.order_by('-date_added')
@@ -319,7 +355,7 @@ def send_clicked(request, useritem_id):
 
     myuser = request.user
     if myuser.is_seller == True:
-        useritems = UserItem.objects.filter(product_author=request.user)
+        useritems = UserItem.objects.filter(product_author=request.user.id)
     else:
         useritems = UserItem.objects.filter(user_id=request.user)
     useritems = useritems.order_by('-date_added')
@@ -334,12 +370,12 @@ def receive_clicked(request, useritem_id):
     useritem.save()
 
     myuser = request.user
-    seller = get_object_or_404(MyUser, username=useritem.product_author)
+    seller = get_object_or_404(MyUser, id=useritem.product_author)
     seller.money += useritem.total_price
     seller.save()
 
     if myuser.is_seller == True:
-        useritems = UserItem.objects.filter(product_author=request.user)
+        useritems = UserItem.objects.filter(product_author=request.user.id)
     else:
         useritems = UserItem.objects.filter(user_id=request.user)
     useritems = useritems.order_by('-date_added')
@@ -352,12 +388,51 @@ def purchase_fail(request):
 def mycart_delete(request):
     list=request.POST.getlist('check1')
     for id in list:
-        UserItem.objects.filter(id=id).delete()
+        useritem = get_object_or_404(UserItem, pk=id)
+        request.user.total_price -= useritem.total_price
+        request.user.save()
+        useritem.delete()
     return redirect('mycart')
 
 def mycart_purchase(request):
+    myuser = request.user
+    total_price = Decimal(0.0)
     list=request.POST.getlist('check1')
+    num = 0
     for id in list:
-        return redirect('index')
-    return redirect('index')
+        num += 1
+    if num == 0:
+        return redirect('mycart')
+    for id in list:
+        useritem = UserItem.objects.get(id=id)
+        print("item id: ", useritem.item_id)
+        total_price += get_object_or_404(Post, pk=useritem.item_id).price * useritem.quantity
+    if myuser.money < total_price:
+        return redirect('purchase_fail')
+
+    fail_list = []
+    success = True
+    for id in list:
+        useritem = UserItem.objects.get(id=id)
+        post = get_object_or_404(Post, pk=useritem.item_id)
+        if useritem.quantity <= post.quantity:
+            post.quantity -= useritem.quantity
+            useritem.is_in_cart = False
+            useritem.is_purchased = True
+            useritem.image = post.image
+            myuser.money -= useritem.quantity * post.price
+            myuser.total_price -= useritem.quantity * post.price
+            useritem.save()
+            post.save()
+            myuser.save()
+        else:
+            fail_list.append(post.title)
+            myuser.total_price -= useritem.quantity * post.price
+            myuser.save()
+            useritem.delete()
+            success = False
+    print(fail_list)
+    if success == True:
+        return redirect('purchase_success')
+    return render(request, 'stock_over.html', {'fail_list': fail_list})
 

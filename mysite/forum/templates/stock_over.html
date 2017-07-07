@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block content %}
+<center>
+<h2>您预约的{{fail_list}}库存不足</h2>
+<h3>当前无法购买的商品已在购物车删除</h3>
+<tr>
+<a href="{% url 'index' %}" class="btn btn-default" role="button">返回首页</a>
+</tr>
+</center>
+{% endblock %}

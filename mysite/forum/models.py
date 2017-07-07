@@ -128,15 +128,6 @@ class MyUser(AbstractBaseUser):
         # Simplest possible answer: All admins are staff
         return self.is_admin
 
-    def get_total_price(self):
-        total_price = Decimal(0.0)
-        useritems = UserItem.objects.filter(user_id=self)
-        for useritem in useritems:
-            if useritem.is_in_cart == True:
-                total_price += useritem.quantity * get_object_or_404(Post, pk=useritem.item_id).price
-        return total_price
-
-
 class Post(models.Model):
     author = models.ForeignKey('MyUser')
     title = models.CharField(max_length=100, verbose_name="商品名")
@@ -164,8 +155,8 @@ class Reply(models.Model):
 class UserItem(models.Model):
     user_id = models.ForeignKey('MyUser')
     item_id = models.IntegerField()
-    product_author = models.CharField(max_length=11)
-    date_added = models.DateTimeField(auto_now_add=True)
+    product_author = models.IntegerField()
+    date_added = models.DateTimeField(auto_now=True)
     quantity = models.IntegerField(verbose_name="购买数量", default=1)
     phonenumber = models.CharField(verbose_name="手机号", max_length=11)
     address = models.CharField(verbose_name="地址", max_length=255)
@@ -183,8 +174,6 @@ class UserItem(models.Model):
     def get_image_url(self):
         return '%s%s' %(settings.MEDIA_URL, self.image)
 
-    def get_price(self):
-        return get_object_or_404(Post, pk=self.item_id).price
+    def get_post_image(self):
+        return '%s%s' %(settings.MEDIA_URL, get_object_or_404(Post, pk=self.item_id).image)
 
-    def get_total_price(self):
-        return get_object_or_404(Post, pk=self.item_id).price * self.quantity
